@@ -1,4 +1,3 @@
-/data/
-/habitat-lab/
-/tmp/
-/__pycache__/
+data/**
+habitat-lab/**
+tmp/**

@@ -21,7 +21,7 @@ def make_env_fn(args, config_env, rank):
     config_env.SIMULATOR.RGB_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.RGB_SENSOR.HFOV = args.hfov
     config_env.SIMULATOR.RGB_SENSOR.POSITION = [0, args.camera_height, 0]
-
+    print("mid")
     config_env.SIMULATOR.DEPTH_SENSOR.WIDTH = args.env_frame_width
     config_env.SIMULATOR.DEPTH_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.DEPTH_SENSOR.HFOV = args.hfov
@@ -51,6 +51,7 @@ if __name__ == "__main__":
 
     # Step through environment with random actions
     for i in range(100):
+        print(i)
         obs, rew, done, info= env.step(env.action_space.sample())
    
 

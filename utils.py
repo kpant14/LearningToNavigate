@@ -29,7 +29,7 @@ def visualize(fig, ax, img, depth, dump_dir, rank, ep_no, t,
     ax[0].set_title("RGB", fontsize=20)
 
   
-    ax[1].imshow(depth)
+    ax[1].imshow(depth[:,:,0])
     ax[1].set_title("Depth",fontsize=20)
 
     for _ in range(5):
