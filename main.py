@@ -4,6 +4,8 @@ from env import exploration_env
 from habitat.config.default import get_config as cfg_env
 from habitat.core.env import Env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
+import os
+import time
 
 
 # This function will be subsequentlty used to create threaded environment
@@ -21,7 +23,6 @@ def make_env_fn(args, config_env, rank):
     config_env.SIMULATOR.RGB_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.RGB_SENSOR.HFOV = args.hfov
     config_env.SIMULATOR.RGB_SENSOR.POSITION = [0, args.camera_height, 0]
-    print("mid")
     config_env.SIMULATOR.DEPTH_SENSOR.WIDTH = args.env_frame_width
     config_env.SIMULATOR.DEPTH_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.DEPTH_SENSOR.HFOV = args.hfov
@@ -31,7 +32,7 @@ def make_env_fn(args, config_env, rank):
     config_env.ENVIRONMENT.MAX_EPISODE_STEPS = args.max_episode_length
     config_env.ENVIRONMENT.ITERATOR_OPTIONS.SHUFFLE = False
     
-    
+    print("fetching dataset ...")
     config_env.DATASET.SPLIT = args.split
     config_env.freeze()
     # Dataset 
@@ -50,9 +51,18 @@ if __name__ == "__main__":
     obs,info = env.reset()
 
     # Step through environment with random actions
-    for i in range(100):
-        print(i)
-        obs, rew, done, info= env.step(env.action_space.sample())
+    if args.task=="generate_train":
+        for i in range(10000):
+            os.system('clear')
+            print("time step - {}".format(i))
+            obs, rew, done, info= env.step(env.action_space.sample())  
+        print("generated training batch")
+    if args.task=="milestone1":
+        for i in range(1):
+            os.system('clear')
+            print("time step - {}".format(i))
+            obs, rew, done, info= env.step(env.action_space.sample())
+        print("generated image for milestone 1")
    
 
 
