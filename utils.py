@@ -16,9 +16,9 @@ from habitat_sim.utils import viz_utils as vut
 import cv2
 
 
-def visualize(fig, ax, img, depth, dump_dir, rank, ep_no, t,
+def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
               visualize, print_images):
-    for i in range(2):
+    for i in range(3):
         ax[i].clear()
         ax[i].set_yticks([])
         ax[i].set_xticks([])
@@ -31,6 +31,9 @@ def visualize(fig, ax, img, depth, dump_dir, rank, ep_no, t,
   
     ax[1].imshow(depth)
     ax[1].set_title("Depth",fontsize=20)
+
+    ax[2].imshow(map)
+    ax[2].set_title("Ground Turth Map",fontsize=20)
 
     for _ in range(5):
         plt.tight_layout()

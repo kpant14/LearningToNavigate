@@ -5,7 +5,6 @@ from habitat.config.default import get_config as cfg_env
 from habitat.core.env import Env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 
-
 # This function will be subsequentlty used to create threaded environment
 def make_env_fn(args, config_env, rank):
     config_env.defrost()
@@ -16,6 +15,8 @@ def make_env_fn(args, config_env, rank):
     config_env.DATASET.DATA_PATH = (
         "data/datasets/pointnav/gibson/v1/{split}/{split}.json.gz"
         )
+
+    #config_env.SIMULATOR.TYPE = "LearningToNavigateSim-v0"    
     config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors
     config_env.SIMULATOR.RGB_SENSOR.WIDTH = args.env_frame_width
     config_env.SIMULATOR.RGB_SENSOR.HEIGHT = args.env_frame_height
@@ -45,13 +46,17 @@ def make_env_fn(args, config_env, rank):
 if __name__ == "__main__":
     args = get_args()
     config_env = cfg_env("habitat-lab/configs/tasks/pointnav.yaml")
-    rank = 1
+    rank = 0
     env = make_env_fn(args, config_env, rank)
     obs,info = env.reset()
 
     # Step through environment with random actions
-    for i in range(100):
+    for i in range(200):
+        if i<50:
+            obs, rew, done, info= env.step(2)    
         obs, rew, done, info= env.step(env.action_space.sample())
+        if i==100:
+            obs,info = env.reset()
    
 
 
