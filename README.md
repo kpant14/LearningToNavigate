@@ -54,5 +54,8 @@ LearningToNavigate/
             train/
             val/
             ...
+    object_datasets/
+      banana.glb
+      ...        
 ```
 
