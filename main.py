@@ -52,12 +52,15 @@ if __name__ == "__main__":
     obs,info = env.reset()
 
     # Step through environment with random actions
-    
+
     if args.task=="generate_train":
         for i in range(10000):
             os.system('clear')
             print("time step - {}".format(i))
-            obs, rew, done, info= env.step(env.action_space.sample())  
+            if i<50:
+                obs, rew, done, info= env.step(2)
+            else:
+                obs, rew, done, info= env.step(env.action_space.sample())  
         print("generated training batch")
     if args.task=="milestone1":
         for i in range(200):
