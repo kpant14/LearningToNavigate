@@ -58,7 +58,7 @@ LearningToNavigate/
       banana.glb
       ...        
 ```
-```
+
 After setting up the environment:
 
 For Milestone1, run the following:
