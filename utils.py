@@ -16,9 +16,15 @@ from habitat_sim.utils import viz_utils as vut
 import cv2
 
 
+<<<<<<< HEAD
 def visualize(fig, ax, img, depth, dump_dir, rank, ep_no, t,
               visualize, print_images,dcrop,task):
     for i in range(2):
+=======
+def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
+              visualize, print_images):
+    for i in range(3):
+>>>>>>> ee74b8830cb297b692f5d45d1018fa97f309ae47
         ax[i].clear()
         ax[i].set_yticks([])
         ax[i].set_xticks([])
@@ -30,11 +36,19 @@ def visualize(fig, ax, img, depth, dump_dir, rank, ep_no, t,
   
     ax[1].imshow(depth[:,:,0])
 
+<<<<<<< HEAD
     if task == "milestone1":
         ax[0].set_title("RGB", fontsize=20)
         ax[1].set_title("Depth",fontsize=20)
         for _ in range(5):
             plt.tight_layout()
+=======
+    ax[2].imshow(map)
+    ax[2].set_title("Ground Turth Map",fontsize=20)
+
+    for _ in range(5):
+        plt.tight_layout()
+>>>>>>> ee74b8830cb297b692f5d45d1018fa97f309ae47
 
     if visualize:
         plt.gcf().canvas.flush_events()

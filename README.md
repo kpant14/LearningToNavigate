@@ -35,7 +35,7 @@ python setup.py develop --all # install habitat and habitat_baselines
 Dataset can be downloaded from [here](https://dl.fbaipublicfiles.com/habitat/data/datasets/pointnav/gibson/v1/pointnav_gibson_v1.zip) </br>
 Gibson Scene datasets can be downloaded from [here](https://docs.google.com/forms/d/e/1FAIpQLScWlx5Z1DM1M-wTSXaa6zV8lTFkPmTHW1LqMsoCBDWsTDjBkQ/viewform)
 </br>
-
+Object datasets can be downloaded from [here](http://dl.fbaipublicfiles.com/habitat/objects_v0.2.zip)</br>
 
 #### Folder Structure
 Folder structure should be as follows:</br>
@@ -54,5 +54,14 @@ LearningToNavigate/
             train/
             val/
             ...
+    object_datasets/
+      banana.glb
+      ...        
 ```
+```
+After setting up the environment:
 
+For Milestone1, run the following:
+```
+python main.py --print_images 1
+```

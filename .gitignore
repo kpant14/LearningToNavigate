@@ -1,4 +1,12 @@
+## Removing datasets and generated files
 data/**
 habitat-lab/**
 tmp/**
 training_data/**
+milestone1.zip
+train_depth1.py
+depth_net.pth
+
+
+## Removing Code Optimizations
+__pycache__/**
