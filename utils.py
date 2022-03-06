@@ -16,7 +16,7 @@ from habitat_sim.utils import viz_utils as vut
 import cv2
 
 
-def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
+def visualize(fig, ax, img, depth,true_map, dump_dir, rank, ep_no, t,
               visualize, print_images,dcrop,task):
     for i in range(3):
         ax[i].clear()
@@ -27,7 +27,7 @@ def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
 
     ax[0].imshow(img)
     ax[1].imshow(depth[:,:,0])
-    ax[2].imshow(map)
+    ax[2].imshow(true_map)
 
     if task == "milestone1":
         ax[0].set_title("RGB", fontsize=20)
@@ -48,6 +48,7 @@ def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
         if task=="generate_train":
             ax[0].set_axis_off()
             ax[1].set_axis_off()
+            
             plt.margins(0,0)
 
             ylims_depth = [0,1]
@@ -67,8 +68,8 @@ def visualize(fig, ax, img, depth,map, dump_dir, rank, ep_no, t,
             fn_rgb = '{}/episodes/{}/{}/{}-{}-Vis-rgb-{}.png'.format(
                 dump_dir, (rank + 1), ep_no, rank, ep_no, t)
 
-            plt.savefig(fn_depth,bbox_inches=bbox_depth,dpi=1/bbox_depth.width*16,pad_inches=0)
-            plt.savefig(fn_rgb,bbox_inches=bbox_rgb,dpi=1/bbox_rgb.width*84,pad_inches=0)#,dpi=fig.dpi/(xlims_rgb[1]-xlims_rgb[0])*84
+            plt.savefig(fn_depth,bbox_inches=bbox_depth,dpi=1/bbox_depth.width*16,pad_inches=0,transparent = True)
+            plt.savefig(fn_rgb,bbox_inches=bbox_rgb,dpi=1/bbox_rgb.width*84,pad_inches=0,transparent = True)#,dpi=fig.dpi/(xlims_rgb[1]-xlims_rgb[0])*84
         if task == "milestone1":
             fn = '{}/episodes/{}/{}/{}-{}-Vis-{}.png'.format(
                 dump_dir, (rank + 1), ep_no, rank, ep_no, t)
