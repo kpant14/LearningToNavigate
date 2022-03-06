@@ -96,7 +96,7 @@ class exploration_env(habitat.RLEnv):
             vu.visualize(self.figure, self.ax, obs['rgb'], obs['depth'],self.top_down_map,
                             dump_dir, self.rank, self.episode_no,
                             self.timestep, self.args.visualize,
-                            self.args.print_images) 
+                            self.args.print_images,[self.args.dcropx,self.args.dcropy],self.args.task) 
         return obs, rew, done, self.info
 
     def get_reward_range(self):

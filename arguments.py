@@ -51,7 +51,14 @@ def get_args():
                         help="agent camera height in metres")
     parser.add_argument('--hfov', type=float, default=90.0,
                         help="horizontal field of view in degrees")
-  
+    parser.add_argument('--dcropx', type = float, default =1.0,
+                        help="crop depth map along x to increase sample efficiency")
+    parser.add_argument('--dcropy', type = float, default =0.25,
+                        help="crop depth map along y to increase sample efficiency")
+
+    # Task specifcations
+    parser.add_argument('--task', type = str, default ="milestone1",
+                        help="task to perform. Milestone1 saves 1 image.")  
 
     # parse arguments
     args = parser.parse_args()

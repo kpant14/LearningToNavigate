@@ -4,6 +4,9 @@ from env import exploration_env
 from habitat.config.default import get_config as cfg_env
 from habitat.core.env import Env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
+import matplotlib.pyplot as plt
+import os
+import time
 
 # This function will be subsequentlty used to create threaded environment
 def make_env_fn(args, config_env, rank):
@@ -22,7 +25,6 @@ def make_env_fn(args, config_env, rank):
     config_env.SIMULATOR.RGB_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.RGB_SENSOR.HFOV = args.hfov
     config_env.SIMULATOR.RGB_SENSOR.POSITION = [0, args.camera_height, 0]
-
     config_env.SIMULATOR.DEPTH_SENSOR.WIDTH = args.env_frame_width
     config_env.SIMULATOR.DEPTH_SENSOR.HEIGHT = args.env_frame_height
     config_env.SIMULATOR.DEPTH_SENSOR.HFOV = args.hfov
@@ -32,7 +34,7 @@ def make_env_fn(args, config_env, rank):
     config_env.ENVIRONMENT.MAX_EPISODE_STEPS = args.max_episode_length
     config_env.ENVIRONMENT.ITERATOR_OPTIONS.SHUFFLE = False
     
-    
+    print("fetching dataset ...")
     config_env.DATASET.SPLIT = args.split
     config_env.freeze()
     # Dataset 
@@ -51,12 +53,32 @@ if __name__ == "__main__":
     obs,info = env.reset()
 
     # Step through environment with random actions
-    for i in range(200):
-        if i<50:
-            obs, rew, done, info= env.step(2)    
-        obs, rew, done, info= env.step(env.action_space.sample())
-        if i==100:
-            obs,info = env.reset()
+
+    if args.task=="generate_train":
+        for i in range(10000):
+            os.system('clear')
+            print("time step - {}".format(i))
+            if i<50:
+                obs, rew, done, info= env.step(2)
+            else:
+                obs, rew, done, info= env.step(env.action_space.sample())
+            if i==0:
+                img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png")
+                plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png",img[int((img.shape[0]-4)/2):int((img.shape[0]-2+4)/2)+1,:])
+                img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png")
+                plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png",img[int((img.shape[0]-84)/2):int((img.shape[0]-2+84)/2)+1,:])
+
+        print("generated training batch")
+    if args.task=="milestone1":
+        for i in range(200):
+            os.system('clear')
+            print("time step - {}".format(i))
+            if i<50:
+                obs, rew, done, info= env.step(2)    
+            obs, rew, done, info= env.step(env.action_space.sample())
+            if i==100:
+                obs,info = env.reset()
+        print("generated image for milestone 1")
    
 
 

@@ -59,3 +59,25 @@ LearningToNavigate/
       ...        
 ```
 
+After setting up the environment:
+
+1. For Milestone1, run the following:
+```
+. milestone1.sh
+```
+  OR
+```
+conda activate habitat
+python main.py --print_images 1
+```
+2. To generate training data and train_depth1, run the following:
+```
+. generate_training_data.sh
+python train_depth1.py
+```
+  OR
+```
+conda activate habitat
+python main.py --print_images 1 -d ./training_data/ -el 10000 --task generate_train
+python train_depth1.py
+```

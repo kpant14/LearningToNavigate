@@ -1,4 +1,11 @@
-/data/
-/habitat-lab/
-/tmp/
-/__pycache__/
+## Removing datasets and generated files
+data/**
+habitat-lab/**
+tmp/**
+training_data/**
+milestone1.zip
+depth_net.pth
+
+
+## Removing Code Optimizations
+__pycache__/**
