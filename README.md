@@ -72,7 +72,8 @@ python main.py --print_images 1
 ```
 2. To generate training data and train_depth1, run the following:
 ```
-. training_depth1.sh
+. generate_training_data.sh
+python train_depth1.py
 ```
   OR
 ```
