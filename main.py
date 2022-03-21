@@ -1,84 +1,100 @@
-import habitat
-from arguments import get_args
-from env import exploration_env
-from habitat.config.default import get_config as cfg_env
-from habitat.core.env import Env
-from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
-import matplotlib.pyplot as plt
+from __future__ import print_function
+
+import argparse
 import os
+
+import torch
+import torch.multiprocessing as mp
 import time
+import shared_optim
+from env import create_habitat_env
+from model import ActorCritic
+from test import test
+from train import train
+from arguments import get_args
+import torch.optim as optim
+import torch.nn as  nn 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch.nn.functional as F
 
-# This function will be subsequentlty used to create threaded environment
-def make_env_fn(args, config_env, rank):
-    config_env.defrost()
-    #Agent Configuration 
-    agent_sensors = []
-    agent_sensors.append("RGB_SENSOR")
-    agent_sensors.append("DEPTH_SENSOR")
-    config_env.DATASET.DATA_PATH = (
-        "data/datasets/pointnav/gibson/v1/{split}/{split}.json.gz"
-        )
-
-    #config_env.SIMULATOR.TYPE = "LearningToNavigateSim-v0"    
-    config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors
-    config_env.SIMULATOR.RGB_SENSOR.WIDTH = args.env_frame_width
-    config_env.SIMULATOR.RGB_SENSOR.HEIGHT = args.env_frame_height
-    config_env.SIMULATOR.RGB_SENSOR.HFOV = args.hfov
-    config_env.SIMULATOR.RGB_SENSOR.POSITION = [0, args.camera_height, 0]
-    config_env.SIMULATOR.DEPTH_SENSOR.WIDTH = args.env_frame_width
-    config_env.SIMULATOR.DEPTH_SENSOR.HEIGHT = args.env_frame_height
-    config_env.SIMULATOR.DEPTH_SENSOR.HFOV = args.hfov
-    config_env.SIMULATOR.DEPTH_SENSOR.POSITION = [0, args.camera_height, 0]
-    config_env.SIMULATOR.TURN_ANGLE = 10
-    #Environment Configuration
-    config_env.ENVIRONMENT.MAX_EPISODE_STEPS = args.max_episode_length
-    config_env.ENVIRONMENT.ITERATOR_OPTIONS.SHUFFLE = False
-    
-    print("fetching dataset ...")
-    config_env.DATASET.SPLIT = args.split
-    config_env.freeze()
-    # Dataset 
-    dataset = PointNavDatasetV1(config_env.DATASET)
-    env = exploration_env(args=args, rank=rank,
-                         config_env=config_env, dataset=dataset
-                         )
-    env.seed(rank)
-    return env
-
-if __name__ == "__main__":
+if __name__ == '__main__':
+    mp.set_start_method('spawn')
+    os.environ['OMP_NUM_THREADS'] = '16'
+    os.environ['CUDA_VISIBLE_DEVICES'] = "0"
     args = get_args()
-    config_env = cfg_env("habitat-lab/configs/tasks/pointnav.yaml")
-    rank = 0
-    env = make_env_fn(args, config_env, rank)
-    obs,info = env.reset()
+    
+    device = 'cpu'
+    # if torch.cuda.is_available():
+    #     print("Using GPU....")
+    #     device = torch.device("cuda:0")
+    torch.manual_seed(args.seed)
+    env = create_habitat_env(args, 0)
+    shared_model = ActorCritic(
+        env.observation_space.shape[0], env.action_space, device)
+    shared_model.share_memory()
+    shared_model.to(device)
+    if args.no_shared:
+        optimizer = None
+    else:
+        #optimizer = shared_optim.SharedAdam(shared_model.parameters(), lr=args.lr)
+        optimizer = shared_optim.SharedRMSprop(shared_model.parameters(), lr=args.lr)
+        optimizer.share_memory()
+    processes = []
+    
+    
 
+    counter = mp.Value('i', 0)
+    lock = mp.Lock()
+    p = mp.Process(target=test, args=(args.num_processes, args, shared_model, counter, device))
+    p.start()
+    processes.append(p)
+    time.sleep(0.1)
+    print(args.num_processes)
+    for rank in range(0, args.num_processes):
+        p = mp.Process(target=train, args=(rank, args, shared_model, counter, lock, device, optimizer ))
+        p.start()
+        processes.append(p)
+        time.sleep(0.1)
+    for p in processes:
+        p.join()
+        time.sleep(0.1)
+
+# if __name__ == "__main__":
+#     args = get_args()
+#     rank = 0
+#     env = create_habitat_env(args, rank)
+
+#     obs, info  = env.reset()
+
+#     obs, reward, done, info  = env.step(1)
     # Step through environment with random actions
 
-    if args.task=="generate_train":
-        for i in range(10000):
-            os.system('clear')
-            print("time step - {}".format(i))
-            if i<50:
-                obs, rew, done, info= env.step(2)
-            else:
-                obs, rew, done, info= env.step(env.action_space.sample())
-            if i==0:
-                img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png")
-                plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png",img[int((img.shape[0]-4)/2):int((img.shape[0]-2+4)/2)+1,:])
-                img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png")
-                plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png",img[int((img.shape[0]-84)/2):int((img.shape[0]-2+84)/2)+1,:])
+    # if args.task=="generate_train":
+    #     for i in range(10000):
+    #         os.system('clear')
+    #         print("time step - {}".format(i))
+    #         if i<50:
+    #             obs, rew, done, info= env.step(2)
+    #         else:
+    #             obs, rew, done, info= env.step(env.action_space.sample())
+    #         if i==0:
+    #             img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png")
+    #             plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-depth-1.png",img[int((img.shape[0]-4)/2):int((img.shape[0]-2+4)/2)+1,:])
+    #             img= plt.imread(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png")
+    #             plt.imsave(args.dump_location +"data/exp1/episodes/1/1/0-1-Vis-rgb-1.png",img[int((img.shape[0]-84)/2):int((img.shape[0]-2+84)/2)+1,:])
 
-        print("generated training batch")
-    if args.task=="milestone1":
-        for i in range(200):
-            os.system('clear')
-            print("time step - {}".format(i))
-            if i<50:
-                obs, rew, done, info= env.step(2)    
-            obs, rew, done, info= env.step(env.action_space.sample())
-            if i==100:
-                obs,info = env.reset()
-        print("generated image for milestone 1")
+    #     print("generated training batch")
+    # if args.task=="milestone1":
+    #     for i in range(200):
+    #         os.system('clear')
+    #         print("time step - {}".format(i))
+    #         if i<50:
+    #             obs, rew, done, info= env.step(2)    
+    #         obs, rew, done, info= env.step(env.action_space.sample())
+    #         if i==100:
+    #             obs,info = env.reset()
+    #     print("generated image for milestone 1")
    
 
 
