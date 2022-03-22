@@ -347,11 +347,10 @@ class Exploration_Env(habitat.RLEnv):
             'pose_err': [0., 0., 0.],
             'geodesic_distance':[0],
         }
-
+        self.info['goal_location'] = obs['pointgoal_with_gps_compass']
         self.save_position()
 
         return state, self.info
-        #return obs, self.info
 
     def step(self, action):
 
@@ -448,7 +447,7 @@ class Exploration_Env(habitat.RLEnv):
         self.info['pose_err'] = [dx_gt - dx_base,
                                  dy_gt - dy_base,
                                  do_gt - do_base]
-        
+        self.info['goal_location'] = obs['pointgoal_with_gps_compass']
         
         if self.timestep%args.num_local_steps==0:
             area, ratio = self.get_global_reward()
@@ -468,7 +467,20 @@ class Exploration_Env(habitat.RLEnv):
             done = False
 
         return state, rew, done, self.info
-        #return obs, rew, done, self.info
+
+    def get_goal_location(self, rel_goal_pos):
+        agent_x, agent_y, agent_o = self.get_sim_location()
+        #Polar coordinate relative to the agent position 
+        r = rel_goal_pos[0]
+        if rel_goal_pos[1] < 0:
+            theta = (2*np.pi + rel_goal_pos[1])
+        else:
+            theta =  rel_goal_pos[1]  
+        theta = theta + agent_o + np.pi      
+        # Converting into cartesian format
+        goal_x = r * np.cos(theta) - agent_x
+        goal_y = r * np.sin(theta) - agent_y
+        return [goal_x, goal_y]
 
     def get_reward_range(self):
         # This function is not used, Habitat-RLEnv requires this function
