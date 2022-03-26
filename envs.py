@@ -12,12 +12,6 @@ from PIL import Image
 from torch.nn import functional as F
 from torchvision import transforms
 
-if sys.platform == 'darwin':
-    matplotlib.use("tkagg")
-else:
-    matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
 import habitat
 from habitat import logger
 
@@ -248,7 +242,7 @@ class Exploration_Env(habitat.RLEnv):
                                       interpolation = Image.NEAREST)])
         self.scene_name = None
         self.maps_dict = {}
-        
+        self._prev_measure = 0
 
     def randomize_env(self):
         self._env._episode_iterator._shuffle_iterator()
@@ -286,6 +280,7 @@ class Exploration_Env(habitat.RLEnv):
         self.prm_planner_setup = None
         # Get Ground Truth Map
         self.explorable_map = None
+        
         while self.explorable_map is None:
             obs = super().reset()
             full_map_size = args.map_size_cm//args.map_resolution
@@ -296,14 +291,18 @@ class Exploration_Env(habitat.RLEnv):
         self.goal_reached =0
         self.prm_star_path = {}
         self.prm_star_path_idx = 0
-
         # Preprocess observations
         rgb = obs['rgb'].astype(np.uint8)
+        depth_ = obs['depth'].astype(np.uint8)
         self.obs = rgb # For visualization
         
         if self.args.frame_width != self.args.env_frame_width:
             rgb = np.asarray(self.res(rgb))
-        state = rgb.transpose(2, 0, 1)
+            depth_ = np.asarray(self.res(depth_))
+            depth_ = np.expand_dims(depth_, axis=0)
+        #state = rgb.transpose(2, 0, 1)
+        state = np.concatenate((rgb.transpose(2, 0, 1), depth_))
+        
         depth = _preprocess_depth(obs['depth'])
         # To store as the dataset for Region proposal network
         self.curr_rgb = rgb
@@ -377,8 +376,9 @@ class Exploration_Env(habitat.RLEnv):
         self.obs = rgb # For visualization
         if self.args.frame_width != self.args.env_frame_width:
             rgb = np.asarray(self.res(rgb))
-
-        state = rgb.transpose(2, 0, 1)
+            depth_ = np.asarray(self.res(obs['depth']))
+            depth_ = np.expand_dims(depth_, axis=0)
+        state = np.concatenate((rgb.transpose(2, 0, 1), depth_))
 
         depth = _preprocess_depth(obs['depth'])
 
@@ -487,8 +487,30 @@ class Exploration_Env(habitat.RLEnv):
         return (0., 1.0)
 
     def get_reward(self, observations):
-        # This function is not used, Habitat-RLEnv requires this function
-        return 0.
+        reward = 0
+        rel_goal_pos = observations['pointgoal_with_gps_compass']
+        episode_success_reward = self.get_episode_success_reward(rel_goal_pos)
+        agent_to_goal_dist_reward = self.get_agent_to_object_dist_reward(observations)
+        reward += (agent_to_goal_dist_reward + episode_success_reward)
+        return reward
+    
+    def get_episode_success_reward(self, rel_goal_pos):
+        agent_x, agent_y, agent_o = self.get_sim_location()
+        goal_x, goal_y = self.get_goal_location(rel_goal_pos)
+        reward = 0
+        if (np.sqrt((goal_x - agent_x)**2 +(goal_y - agent_y)**2) < 0.2):
+            reward = 10
+        return reward
+    
+    def get_agent_to_object_dist_reward(self, observations):
+        """
+        Encourage the agent to move towards the goal.
+        """
+        curr_metric = self._env.get_metrics()["distance_to_goal"]
+        prev_metric = self._prev_measure
+        dist_reward = prev_metric - curr_metric
+        self._prev_measure = curr_metric
+        return dist_reward
 
     def get_global_reward(self):
         curr_explored = self.explored_map*self.explorable_map
@@ -753,7 +775,6 @@ class Exploration_Env(habitat.RLEnv):
     def _get_gt_map(self, full_map_size):
         #self.scene_name = self.habitat_env.sim.config.SCENE
         #logger.error('Computing map for %s', self.scene_name)
-
         # Get map in habitat simulator coordinates
         self.map_obj = HabitatMaps(self.habitat_env)
         if self.map_obj.size[0] < 1 or self.map_obj.size[1] < 1:

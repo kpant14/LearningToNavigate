@@ -92,15 +92,24 @@ def main():
     pose_costs = deque(maxlen=1000)
 
     l_masks = torch.zeros(num_scenes).float().to(device)
+    ppo_masks = torch.zeros(num_scenes).float().to(device)
 
     best_local_loss = np.inf
-    best_g_reward = -np.inf
+    best_ppo_reward = -np.inf
 
     if args.eval:
         traj_lengths = args.max_episode_length // args.num_local_steps
-        explored_area_log = np.zeros((num_scenes, num_episodes, traj_lengths))
-        explored_ratio_log = np.zeros((num_scenes, num_episodes, traj_lengths))
+        #explored_area_log = np.zeros((num_scenes, num_episodes, traj_lengths))
+        #explored_ratio_log = np.zeros((num_scenes, num_episodes, traj_lengths))
 
+    ppo_episode_rewards = deque(maxlen=1000)
+    ppo_value_losses = deque(maxlen=1000)
+    ppo_action_losses = deque(maxlen=1000)
+    ppo_dist_entropies = deque(maxlen=1000)
+
+    per_step_ppo_rewards = deque(maxlen=1000)
+
+    ppo_process_rewards = np.zeros((num_scenes))
 
     l_action_losses = deque(maxlen=1000)
 
@@ -109,7 +118,6 @@ def main():
     torch.set_num_threads(1)
     envs = make_vec_envs(args)
     obs, infos = envs.reset()
-
     # Initialize map variables
     ### Full map consists of 4 channels containing the following:
     ### 1. Obstacle Map
@@ -180,6 +188,24 @@ def main():
 
     # Local and Global policy recurrent layer sizes
     l_hidden_size = args.local_hidden_size
+    ppo_hidden_size = args.global_hidden_size
+
+     # PPO policy observation space
+    ppo_observation_space = gym.spaces.Box(0, 255,
+                                         (4,args.frame_width,
+                                          args.frame_height), dtype='uint8')
+
+    # Global policy action space
+    ppo_action_space = gym.spaces.Box(low=0.0, high=1.0,
+                                    shape=(3,), dtype=np.float32)
+
+
+    # Local policy observation space
+    l_observation_space = gym.spaces.Box(0, 255,
+                                         (3,
+                                          args.frame_width,
+                                          args.frame_width), dtype='uint8')
+
 
     # slam
     nslam_module = Neural_SLAM_Module(args).to(device)
@@ -196,8 +222,23 @@ def main():
     local_optimizer = get_optimizer(l_policy.parameters(),
                                     args.local_optimizer)
 
+    # Global policy
+    ppo_policy = RL_Policy(ppo_observation_space.shape, ppo_action_space,
+                         base_kwargs={'recurrent': args.use_recurrent_global,
+                                      'hidden_size': ppo_hidden_size,
+                                      'downscaling': args.global_downscaling
+                                      }).to(device)
+    ppo_agent = algo.PPO(ppo_policy, args.clip_param, args.ppo_epoch,
+                       args.num_mini_batch, args.value_loss_coef,
+                       args.entropy_coef, lr=args.global_lr, eps=args.eps,
+                       max_grad_norm=args.max_grad_norm)
 
     slam_memory = FIFOMemory(args.slam_memory_size)
+    # Storage
+    ppo_rollouts = GlobalRolloutStorage(args.num_global_steps,
+                                      num_scenes, ppo_observation_space.shape,
+                                      ppo_action_space, ppo_policy.rec_state_size,
+                                      1).to(device)
 
     # Loading model
     if args.load_slam != "0":
@@ -226,21 +267,22 @@ def main():
     ).float().to(device)
 
     _, _, local_map[:, 0, :, :], local_map[:, 1, :, :], _, local_pose = \
-        nslam_module(obs, obs, poses, local_map[:, 0, :, :],
+        nslam_module(obs[:,0:3,:,:], obs[:,0:3,:,:], poses, local_map[:, 0, :, :],
                      local_map[:, 1, :, :], local_pose)
 
-    # Compute Global policy input
+    # Compute PPO policy input
     locs = local_pose.cpu().numpy()
-    global_input = torch.zeros(num_scenes, 8, local_w, local_h)
-    global_orientation = torch.zeros(num_scenes, 1).long()
-    global_goals = np.zeros((num_scenes, 2))
+    orientation = torch.zeros(num_scenes, 1).long()
+    goals = np.zeros((num_scenes, 2))
+    ppo_input = torch.zeros(num_scenes, 4, args.frame_width, args.frame_height)
+
     for e in range(num_scenes):
         r, c = locs[e, 1], locs[e, 0]
         loc_r, loc_c = [int(r * 100.0 / args.map_resolution),
                         int(c * 100.0 / args.map_resolution)]
 
         local_map[e, 2:, loc_r - 1:loc_r + 2, loc_c - 1:loc_c + 2] = 1.
-        global_orientation[e] = int((locs[e, 2] + 180.0) / 5.)
+        orientation[e] = int((locs[e, 2] + 180.0) / 5.)
        
         # Polar coordinate relative to the agent position 
         r_goal = infos[e]['goal_location'][0]
@@ -249,15 +291,26 @@ def main():
         # Converting into cartesian format
         z_coordinate = r_goal * np.cos(theta_goal)
         x_coordinate = r_goal * np.sin(theta_goal)
-        global_goals[e] = np.array([x_coordinate * 100.0 / args.map_resolution + loc_r, z_coordinate * 100.0 / args.map_resolution + loc_c ])
-    
-    
+        goals[e] = np.array([x_coordinate * 100.0 / args.map_resolution + loc_r, z_coordinate * 100.0 / args.map_resolution + loc_c ])
+    ppo_input = obs.float().to(device)
+    ppo_rollouts.obs[0].copy_(ppo_input)
+
+    # Run PPO Policy (ppo_goals = navigation actions)
+    ppo_value, ppo_action, ppo_action_log_prob, ppo_rec_states = \
+        ppo_policy.act(
+            ppo_rollouts.obs[0],
+            ppo_rollouts.rec_states[0],
+            ppo_rollouts.masks[0],
+            extras=ppo_rollouts.extras[0],
+            deterministic=False
+        )
+
     # Compute planner inputs
     planner_inputs = [{} for e in range(num_scenes)]
     for e, p_input in enumerate(planner_inputs):
-        p_input['goal'] = global_goals[e].astype(int)
-        p_input['map_pred'] = global_input[e, 0, :, :].detach().cpu().numpy()
-        p_input['exp_pred'] = global_input[e, 1, :, :].detach().cpu().numpy()
+        p_input['goal'] = goals[e].astype(int)
+        p_input['map_pred'] = local_map[e, 0, :, :].cpu().numpy()
+        p_input['exp_pred'] = local_map[e, 1, :, :].cpu().numpy()
         p_input['pose_pred'] = planner_pose_inputs[e]
 
     # Output stores local goals as well as the the ground-truth action
@@ -269,16 +322,27 @@ def main():
 
     total_num_steps = -1
     g_reward = 0
-
+    ppo_reward = torch.zeros(num_scenes, 1).to(device)
     torch.set_grad_enabled(False)
 
     for ep_num in range(num_episodes):
         for step in range(args.max_episode_length):
             total_num_steps += 1
-
-            g_step = (step // args.num_local_steps) % args.num_global_steps
-            eval_g_step = step // args.num_local_steps + 1
+            ppo_step = step % args.num_global_steps
             l_step = step % args.num_local_steps
+
+             # Sample actions from PPO policy
+            ppo_value, ppo_action, ppo_action_log_prob, ppo_rec_states = \
+                ppo_policy.act(
+                    ppo_rollouts.obs[ppo_step + 1],
+                    ppo_rollouts.rec_states[ppo_step + 1],
+                    ppo_rollouts.masks[ppo_step + 1],
+                    extras=ppo_rollouts.extras[ppo_step + 1],
+                    deterministic=False
+                )
+            ppo_actions = nn.Sigmoid()(ppo_action)
+            ppo_actions = torch.argmax(ppo_actions, dim = 1)   
+
 
             # ------------------------------------------------------------------
             # Local Policy
@@ -291,7 +355,7 @@ def main():
                 torch.set_grad_enabled(True)
 
             action, action_prob, local_rec_states = l_policy(
-                obs,
+                obs[:,0:3,:,:],
                 local_rec_states,
                 local_masks,
                 extras=local_goals,
@@ -306,12 +370,39 @@ def main():
 
             # ------------------------------------------------------------------
             # Env step
-            obs, rew, done, infos = envs.step(l_action)
-
+            #obs, rew, done, infos = envs.step(l_action)
+            obs, rew, done, infos = envs.step(ppo_actions)
+           
             l_masks = torch.FloatTensor([0 if x else 1
                                          for x in done]).to(device)
             # ------------------------------------------------------------------
+            # PPO Rewards
+            # Get exploration reward and metrics
+            ppo_reward = torch.from_numpy(np.asarray(
+                [rew[env_idx] for env_idx
+                    in range(num_scenes)])
+            ).float().to(device)
 
+            if args.eval:
+                ppo_reward = ppo_reward
+
+            ppo_process_rewards += ppo_reward.cpu().numpy()
+            ppo_total_rewards = ppo_process_rewards * \
+                                (1 - ppo_masks.cpu().numpy())
+            ppo_process_rewards *= ppo_masks.cpu().numpy()
+            per_step_ppo_rewards.append(np.mean(ppo_reward.cpu().numpy()))
+
+            if np.sum(ppo_total_rewards) != 0:
+                for tr in ppo_total_rewards:
+                    ppo_episode_rewards.append(tr) if tr != 0 else None
+            
+            # Add samples to PPO policy storage
+            ppo_rollouts.insert(
+                ppo_input, ppo_rec_states,
+                ppo_action, ppo_action_log_prob, ppo_value,
+                ppo_reward, ppo_masks, orientation
+            )
+            
             # ------------------------------------------------------------------
             # Reinitialize variables when episode ends
             if step == args.max_episode_length - 1:  # Last episode step
@@ -348,7 +439,7 @@ def main():
             ).float().to(device)
 
             _, _, local_map[:, 0, :, :], local_map[:, 1, :, :], _, local_pose = \
-                nslam_module(last_obs, obs, poses, local_map[:, 0, :, :],
+                nslam_module(last_obs[:,0:3,:,:], obs[:,0:3,:,:], poses, local_map[:, 0, :, :],
                              local_map[:, 1, :, :], local_pose, build_maps=True)
 
             locs = local_pose.cpu().numpy()
@@ -363,7 +454,7 @@ def main():
             # ------------------------------------------------------------------
 
             # ------------------------------------------------------------------
-            # Global Policy
+            # Change the maps to make agent in the center
             if l_step == args.num_local_steps - 1:
                 # For every global step, update the full and local maps
                 for e in range(num_scenes):
@@ -397,7 +488,7 @@ def main():
                                     int(c * 100.0 / args.map_resolution)]
 
                     local_map[e, 2:, loc_r - 1:loc_r + 2, loc_c - 1:loc_c + 2] = 1.
-                    global_orientation[e] = int((locs[e, 2] + 180.0) / 5.)
+                    orientation[e] = int((locs[e, 2] + 180.0) / 5.)
                 
                     # Polar coordinate relative to the agent position 
                     r_goal = infos[e]['goal_location'][0]
@@ -406,10 +497,7 @@ def main():
                     # Converting into cartesian format
                     z_coordinate = r_goal * np.cos(theta_goal)
                     x_coordinate = r_goal * np.sin(theta_goal)
-                    global_goals[e] = np.array([x_coordinate * 100.0 / args.map_resolution + loc_r, z_coordinate * 100.0 / args.map_resolution + loc_c ])    
-                global_input[:, 0:4, :, :] = local_map
-                global_input[:, 4:, :, :] = \
-                    nn.MaxPool2d(args.global_downscaling)(full_map)
+                    goals[e] = np.array([x_coordinate * 100.0 / args.map_resolution + loc_r, z_coordinate * 100.0 / args.map_resolution + loc_c ])    
 
             # ------------------------------------------------------------------
             # Get short term goal
@@ -418,7 +506,7 @@ def main():
                 p_input['map_pred'] = local_map[e, 0, :, :].cpu().numpy()
                 p_input['exp_pred'] = local_map[e, 1, :, :].cpu().numpy()
                 p_input['pose_pred'] = planner_pose_inputs[e]
-                p_input['goal'] = global_goals[e].astype(int)
+                p_input['goal'] = goals[e].astype(int)
             output = envs.get_short_term_goal(planner_inputs)
             # ------------------------------------------------------------------
 
@@ -474,7 +562,24 @@ def main():
                     del b_proj_pred, b_fp_exp_pred, b_pose_err_pred
 
             # ------------------------------------------------------------------
+            # Train PPO Policy
+            if ppo_step % args.num_global_steps == args.num_global_steps - 1: 
+                if args.train_global:
+                    ppo_next_value = ppo_policy.get_value(
+                        ppo_rollouts.obs[-1],
+                        ppo_rollouts.rec_states[-1],
+                        ppo_rollouts.masks[-1],
+                        extras=ppo_rollouts.extras[-1]
+                    ).detach()
 
+                    ppo_rollouts.compute_returns(ppo_next_value, args.use_gae,
+                                               args.gamma, args.tau)
+                    g_value_loss, g_action_loss, g_dist_entropy = \
+                        ppo_agent.update(ppo_rollouts)
+                    ppo_value_losses.append(g_value_loss)
+                    ppo_action_losses.append(g_action_loss)
+                    ppo_dist_entropies.append(g_dist_entropy)
+                ppo_rollouts.after_update()
             # ------------------------------------------------------------------
             # Train Local Policy
             if (l_step + 1) % args.local_policy_update_freq == 0 \
@@ -506,6 +611,20 @@ def main():
                 ])
 
                 log += "\n\tRewards:"
+                if len(ppo_episode_rewards) > 0:
+                    log += " ".join([
+                        " Global step mean/med rew:",
+                        "{:.4f}/{:.4f},".format(
+                            np.mean(per_step_ppo_rewards),
+                            np.median(per_step_ppo_rewards)),
+                        " Global eps mean/med/min/max eps rew:",
+                        "{:.3f}/{:.3f}/{:.3f}/{:.3f},".format(
+                            np.mean(ppo_episode_rewards),
+                            np.median(ppo_episode_rewards),
+                            np.min(ppo_episode_rewards),
+                            np.max(ppo_episode_rewards))
+                    ])
+
                 log += "\n\tLosses:"
 
                 if args.train_local and len(l_action_losses) > 0:
@@ -515,7 +634,14 @@ def main():
                             np.mean(l_action_losses))
                     ])
 
-
+                if args.train_global and len(ppo_value_losses) > 0:
+                    log += " ".join([
+                        " Global Loss value/action/dist:",
+                        "{:.3f}/{:.3f}/{:.3f},".format(
+                            np.mean(ppo_value_losses),
+                            np.mean(ppo_action_losses),
+                            np.mean(ppo_dist_entropies))
+                    ])
                 if args.train_slam and len(costs) > 0:
                     log += " ".join([
                         " SLAM Loss proj/exp/pose:"
@@ -549,6 +675,13 @@ def main():
                                os.path.join(log_dir, "model_best.local"))
 
                     best_local_loss = np.mean(l_action_losses)
+                 # Save Global Policy Model
+                if len(ppo_episode_rewards) >= 100 and \
+                        (np.mean(ppo_episode_rewards) >= best_ppo_reward) \
+                        and not args.eval:
+                    torch.save(ppo_policy.state_dict(),
+                               os.path.join(log_dir, "model_best.ppo"))
+                    best_ppo_reward = np.mean(ppo_episode_rewards)
 
             # Save periodic models
             if (total_num_steps * num_scenes) % args.save_periodic < \
@@ -566,31 +699,31 @@ def main():
 
     # Print and save model performance numbers during evaluation
     if args.eval:
-        logfile = open("{}/explored_area.txt".format(dump_dir), "w+")
-        for e in range(num_scenes):
-            for i in range(explored_area_log[e].shape[0]):
-                logfile.write(str(explored_area_log[e, i]) + "\n")
-                logfile.flush()
+        # logfile = open("{}/explored_area.txt".format(dump_dir), "w+")
+        # for e in range(num_scenes):
+        #     for i in range(explored_area_log[e].shape[0]):
+        #         logfile.write(str(explored_area_log[e, i]) + "\n")
+        #         logfile.flush()
 
-        logfile.close()
+        # logfile.close()
 
-        logfile = open("{}/explored_ratio.txt".format(dump_dir), "w+")
-        for e in range(num_scenes):
-            for i in range(explored_ratio_log[e].shape[0]):
-                logfile.write(str(explored_ratio_log[e, i]) + "\n")
-                logfile.flush()
+        # logfile = open("{}/explored_ratio.txt".format(dump_dir), "w+")
+        # for e in range(num_scenes):
+        #     for i in range(explored_ratio_log[e].shape[0]):
+        #         logfile.write(str(explored_ratio_log[e, i]) + "\n")
+        #         logfile.flush()
 
-        logfile.close()
+        # logfile.close()
 
-        log = "Final Exp Area: \n"
-        for i in range(explored_area_log.shape[2]):
-            log += "{:.5f}, ".format(
-                np.mean(explored_area_log[:, :, i]))
+        # log = "Final Exp Area: \n"
+        # for i in range(explored_area_log.shape[2]):
+        #     log += "{:.5f}, ".format(
+        #         np.mean(explored_area_log[:, :, i]))
 
-        log += "\nFinal Exp Ratio: \n"
-        for i in range(explored_ratio_log.shape[2]):
-            log += "{:.5f}, ".format(
-                np.mean(explored_ratio_log[:, :, i]))
+        # log += "\nFinal Exp Ratio: \n"
+        # for i in range(explored_ratio_log.shape[2]):
+        #     log += "{:.5f}, ".format(
+        #         np.mean(explored_ratio_log[:, :, i]))
 
         print(log)
         logging.info(log)
