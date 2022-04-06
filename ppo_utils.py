@@ -287,7 +287,7 @@ def ppo_args():
     parser.add_argument(
         "--num-mini-batch",
         type=int,
-        default=10,
+        default=5,
         help="number of batches for ppo (default: 32)",
     )
     parser.add_argument(
@@ -327,7 +327,7 @@ def ppo_args():
     parser.add_argument(
         "--num-processes",
         type=int,
-        default=10,
+        default=5,
         help="number of training processes " "to use (default: 16)",
     )
     parser.add_argument(
@@ -369,13 +369,13 @@ def ppo_args():
     parser.add_argument(
         "--log-interval",
         type=int,
-        default=1,
+        default=10,
         help="number of updates after which metrics are logged",
     )
     parser.add_argument(
         "--checkpoint-interval",
         type=int,
-        default=50,
+        default=500,
         help="number of updates after which models are checkpointed",
     )
     parser.add_argument(

@@ -32,13 +32,12 @@ class NavRLEnv(habitat.RLEnv):
 
     def reset(self):
         self._previous_action = None
-
         observations = super().reset()
 
         self._previous_target_distance = self.habitat_env.current_episode.info[
             "geodesic_distance"
         ]
-        infos={}
+        infos= self.get_info(observations)
         return observations, infos
 
     def step(self, action):
@@ -106,12 +105,11 @@ def construct_envs(args):
     baseline_configs = []
     basic_config = cfg_env(config_paths=args.task_config, opts=args.opts)
     basic_config.defrost()
-    basic_config.DATASET.SPLIT = 'val'
+    basic_config.DATASET.SPLIT = 'train'
     basic_config.DATASET.DATA_PATH = (
     "data/datasets/pointnav/gibson/v1/{split}/{split}.json.gz")
     basic_config.DATASET.TYPE = "PointNavDataset-v1"
     basic_config.freeze()
-    print(basic_config.DATASET.DATA_PATH)
     dataset = PointNavDatasetV1(basic_config.DATASET)
     scenes = dataset.get_scenes_to_load(basic_config.DATASET)
 
@@ -133,7 +131,7 @@ def construct_envs(args):
     for i in range(args.num_processes):
         config_env = cfg_env(config_paths=args.task_config, opts=args.opts)
         config_env.defrost()
-        config_env.DATASET.SPLIT = 'val'
+        config_env.DATASET.SPLIT = 'train'
         config_env.DATASET.DATA_PATH = (
         "data/datasets/pointnav/gibson/v1/{split}/{split}.json.gz")
         config_env.DATASET.TYPE = "PointNavDataset-v1"
@@ -163,7 +161,6 @@ def construct_envs(args):
     )
 
     return envs
-
 
 def run_training():
     parser = ppo_args()
@@ -263,12 +260,7 @@ def run_training():
             pth_time += time() - t_sample_action
 
             t_step_env = time()
-
             observations, rewards, dones, infos = envs.step([a[0].item() for a in actions])
-            # observations, rewards, dones, infos = [
-            #     list(x) for x in zip(*outputs)
-            # ]
-
             env_time += time() - t_step_env
 
             t_update_stats = time()

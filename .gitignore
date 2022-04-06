@@ -7,5 +7,6 @@ milestone1.zip
 depth_net.pth
 
 pretrained_models
+ppo_train_ckpt
 ## Removing Code Optimizations
 __pycache__/**
