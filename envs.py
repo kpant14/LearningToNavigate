@@ -61,6 +61,11 @@ class VecPyTorch():
         self.action_space = venv.action_spaces[0]
         self.device = device
 
+    def reset_at(self, env_idx):
+        obs, info = self.venv.reset_at(env_idx)
+        obs = torch.from_numpy(obs).float().to(self.device)
+        return obs, info
+
     def reset(self):
         obs,info = self.venv.reset()
         obs = torch.from_numpy(obs).float().to(self.device)
@@ -168,6 +173,9 @@ def construct_envs(args):
 
         config_env.SIMULATOR.TURN_ANGLE = 10
         config_env.DATASET.SPLIT = args.split
+
+        config_env.TASK.SUCCESS.SUCCESS_DISTANCE =0.36
+        config_env.TASK.SUCCESS_DISTANCE =0.36
         config_env.freeze()
         env_configs.append(config_env)
         args_list.append(args)
@@ -347,6 +355,9 @@ class Exploration_Env(habitat.RLEnv):
             'geodesic_distance':[0],
         }
         self.info['goal_location'] = obs['pointgoal_with_gps_compass']
+        self.info['distance_to_goal'] = self._env.get_metrics()["distance_to_goal"]
+        self.info['spl'] = self._env.get_metrics()["spl"]
+        self.info['success'] = self._env.get_metrics()["success"]
         self.save_position()
 
         return state, self.info
@@ -363,7 +374,8 @@ class Exploration_Env(habitat.RLEnv):
             action = 3
         elif action == 0: # Left
             action = 2
-
+        elif (action == 3):# Stop
+            action = 0
         self.last_loc = np.copy(self.curr_loc)
         self.last_loc_gt = np.copy(self.curr_loc_gt)
         self._previous_action = action
@@ -448,7 +460,8 @@ class Exploration_Env(habitat.RLEnv):
                                  dy_gt - dy_base,
                                  do_gt - do_base]
         self.info['goal_location'] = obs['pointgoal_with_gps_compass']
-        
+        self.info
+
         if self.timestep%args.num_local_steps==0:
             area, ratio = self.get_global_reward()
             self.info['exp_reward'] = area
@@ -465,7 +478,11 @@ class Exploration_Env(habitat.RLEnv):
                 self.save_trajectory_data()
         else:
             done = False
-
+        self.info['distance_to_goal'] = self._env.get_metrics()["distance_to_goal"]
+        self.info['spl'] = self._env.get_metrics()["spl"]
+        self.info['success'] = self._env.get_metrics()["success"]
+        if(action==0):
+            print(self.info['spl'])
         return state, rew, done, self.info
 
     def get_goal_location(self, rel_goal_pos):

@@ -1,3 +1,4 @@
+import copy
 import time
 from collections import deque
 
@@ -57,7 +58,7 @@ def get_local_map_boundaries(agent_loc, local_sizes, full_sizes):
         if gy2 > full_h:
             gy1, gy2 = full_h - local_h, full_h
     else:
-        gx1.gx2, gy1, gy2 = 0, full_w, 0, full_h
+        gx1, gx2, gy1, gy2 = 0, full_w, 0, full_h
 
     return [gx1, gx2, gy1, gy2]
 
@@ -179,6 +180,33 @@ def main():
             local_pose[e] = full_pose[e] - \
                             torch.from_numpy(origins[e]).to(device).float()
 
+    def init_map_and_pose_at(env_idx):
+        full_map[env_idx].fill_(0.)
+        full_pose[env_idx].fill_(0.)
+        full_pose[env_idx, :2] = args.map_size_cm / 100.0 / 2.0
+
+        locs = full_pose.cpu().numpy()
+        planner_pose_inputs[env_idx, :3] = locs[env_idx]
+        
+        r, c = locs[env_idx, 1], locs[env_idx, 0]
+        loc_r, loc_c = [int(r * 100.0 / args.map_resolution),
+                        int(c * 100.0 / args.map_resolution)]
+
+        full_map[env_idx, 2:, loc_r - 1:loc_r + 2, loc_c - 1:loc_c + 2] = 1.0
+
+        lmb[env_idx] = get_local_map_boundaries((loc_r, loc_c),
+                                            (local_w, local_h),
+                                            (full_w, full_h))
+
+        planner_pose_inputs[env_idx, 3:] = lmb[env_idx]
+        origins[env_idx] = [lmb[env_idx][2] * args.map_resolution / 100.0,
+                        lmb[env_idx][0] * args.map_resolution / 100.0, 0.]
+
+       
+        local_map[env_idx] = full_map[env_idx, :, lmb[env_idx, 0]:lmb[env_idx, 1], lmb[env_idx, 2]:lmb[env_idx, 3]]
+        local_pose[env_idx] = full_pose[env_idx] - \
+                        torch.from_numpy(origins[env_idx]).to(device).float()                        
+
     init_map_and_pose()
     # Local policy observation space
     l_observation_space = gym.spaces.Box(0, 255,
@@ -256,6 +284,11 @@ def main():
         state_dict = torch.load(args.load_local,
                                 map_location=lambda storage, loc: storage)
         l_policy.load_state_dict(state_dict)
+    if args.load_global != "0":
+        print("Loading ppo {}".format(args.load_global))
+        state_dict = torch.load(args.load_global,
+                                map_location=lambda storage, loc: storage)
+        ppo_policy.load_state_dict(state_dict)    
 
     if not args.train_local:
         l_policy.eval()
@@ -325,6 +358,8 @@ def main():
     ppo_reward = torch.zeros(num_scenes, 1).to(device)
     torch.set_grad_enabled(False)
 
+
+    splfile = open("{}/spl.txt".format(dump_dir), "w+")
     for ep_num in range(num_episodes):
         for step in range(args.max_episode_length):
             total_num_steps += 1
@@ -370,9 +405,24 @@ def main():
 
             # ------------------------------------------------------------------
             # Env step
-            #obs, rew, done, infos = envs.step(l_action)
-            obs, rew, done, infos = envs.step(ppo_actions)
-           
+            if args.eval:
+                for e in range(num_scenes):
+                    if (infos[e]['distance_to_goal'] < 0.36):
+                        l_action[e] = 3    
+                        ppo_actions[e] = 3 
+            obs, rew, done, infos = envs.step(l_action)
+            #obs, rew, done, infos = envs.step(ppo_actions)
+            if args.eval:
+                for e in range(num_scenes):
+                    if (infos[e]['success'] or done[e]):
+                        splfile.write(str(infos[e]['spl']) + '\t' + str(infos[e]['success']) + "\n")
+                        splfile.flush()
+
+                        obs_, info = envs.reset_at(e)
+                        obs[e] = obs_
+                        infos[e] = copy.deepcopy(info[0])  
+                        init_map_and_pose_at(e)
+                        last_obs[e] = obs[e].detach()  
             l_masks = torch.FloatTensor([0 if x else 1
                                          for x in done]).to(device)
             # ------------------------------------------------------------------
@@ -405,10 +455,11 @@ def main():
             
             # ------------------------------------------------------------------
             # Reinitialize variables when episode ends
-            if step == args.max_episode_length - 1:  # Last episode step
-                init_map_and_pose()
-                del last_obs
-                last_obs = obs.detach()
+            if not args.eval:
+                if step == args.max_episode_length - 1:  # Last episode step
+                    init_map_and_pose()
+                    del last_obs
+                    last_obs = obs.detach()
             # ------------------------------------------------------------------
 
             # ------------------------------------------------------------------
@@ -451,6 +502,14 @@ def main():
                                 int(c * 100.0 / args.map_resolution)]
 
                 local_map[e, 2:, loc_r - 2:loc_r + 3, loc_c - 2:loc_c + 3] = 1.
+                # Polar coordinate relative to the agent position 
+                r_goal = infos[e]['goal_location'][0]
+                # Adding agents angle with the relative angle to get the absolute angle. 
+                theta_goal = infos[e]['goal_location'][1] + np.radians(locs[e,2])
+                # Converting into cartesian format
+                z_coordinate = r_goal * np.cos(theta_goal)
+                x_coordinate = r_goal * np.sin(theta_goal)
+                goals[e] = np.array([x_coordinate * 100.0 / args.map_resolution + loc_r, z_coordinate * 100.0 / args.map_resolution + loc_c ])  
             # ------------------------------------------------------------------
 
             # ------------------------------------------------------------------
@@ -696,7 +755,7 @@ def main():
                                os.path.join(dump_dir,
                                             "periodic_{}.local".format(step)))
             # ------------------------------------------------------------------
-
+    splfile.close()
     # Print and save model performance numbers during evaluation
     if args.eval:
         # logfile = open("{}/explored_area.txt".format(dump_dir), "w+")

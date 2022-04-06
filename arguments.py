@@ -11,7 +11,7 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--auto_gpu_config', type=int, default=1)
     parser.add_argument('--total_num_scenes', type=str, default="auto")
-    parser.add_argument('-n', '--num_processes', type=int, default=1,
+    parser.add_argument('-n', '--num_processes', type=int, default=4,
                         help="""how many training processes to use (default:4)
                                 Overridden when auto_gpu_config=1
                                 and training on gpus """)
@@ -71,7 +71,7 @@ def get_args():
                         help='Frame width (default:84)')
     parser.add_argument('-fh', '--frame_height', type=int, default=128,
                         help='Frame height (default:84)')
-    parser.add_argument('-el', '--max_episode_length', type=int, default=1000,
+    parser.add_argument('-el', '--max_episode_length', type=int, default=500,
                         help="""Maximum episode length in seconds for
                                 Doom (default: 180)""")
     parser.add_argument("--sim_gpu_id", type=int, default=0,
