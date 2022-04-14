@@ -19,7 +19,8 @@ class Flatten(nn.Module):
 
 class CustomFixedCategorical(torch.distributions.Categorical):
     def sample(self, sample_shape=torch.Size()):
-        return super().sample(sample_shape).unsqueeze(-1)
+        return super().sample().unsqueeze(-1)
+        #return super().sample(sample_shape).unsqueeze(-1)
 
     def log_probs(self, actions):
         return (
@@ -90,7 +91,7 @@ class RolloutStorage:
         if action_space.__class__.__name__ == "Discrete":
             action_shape = 1
         else:
-            action_shape = 1
+            action_shape = 1 
 
         self.actions = torch.zeros(num_steps, num_envs, action_shape)
         if action_space.__class__.__name__ == "Discrete":
@@ -434,7 +435,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from habitat_baselines.rl.ppo.ppo_utils import CategoricalNet, Flatten
+#from habitat_baselines.rl.ppo.ppo_utils import CategoricalNet, Flatten
 
 
 class Policy(nn.Module):
@@ -453,7 +454,6 @@ class Policy(nn.Module):
             hidden_size=hidden_size,
             goal_sensor_uuid=goal_sensor_uuid,
         )
-
         self.action_distribution = CategoricalNet(
             self.net.output_size, self.dim_actions
         )

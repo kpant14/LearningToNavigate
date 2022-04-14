@@ -28,6 +28,7 @@ class NavRLEnv(habitat.RLEnv):
         self._previous_target_distance = None
         self._previous_action = None
         self._episode_distance_covered = None
+        self.stg = None
         super().__init__(config_env, dataset)
 
     def reset(self):

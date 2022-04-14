@@ -5,8 +5,11 @@ tmp/**
 training_data/**
 milestone1.zip
 depth_net.pth
-
 pretrained_models
+habitat_baselines
 ppo_train_ckpt
+unused
+results
+logs
 ## Removing Code Optimizations
 __pycache__/**

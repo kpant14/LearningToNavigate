@@ -9,7 +9,7 @@ def get_args():
     ## General Arguments
     parser.add_argument('--seed', type=int, default=1,
                         help='random seed (default: 1)')
-    parser.add_argument('--auto_gpu_config', type=int, default=1)
+    parser.add_argument('--auto_gpu_config', type=int, default=0)
     parser.add_argument('--total_num_scenes', type=str, default="auto")
     parser.add_argument('-n', '--num_processes', type=int, default=4,
                         help="""how many training processes to use (default:4)
@@ -32,6 +32,8 @@ def get_args():
     parser.add_argument('--train_slam', type=int, default=1,
                         help="""0: Do not train the Neural SLAM Module
                                 1: Train the Neural SLAM Module (default: 1)""")
+    parser.add_argument('--agent', type=str, default="ans",
+                        help="ans, ppo, ppo_st")                            
 
     # Logging, loading models, visualization
     parser.add_argument('--log_interval', type=int, default=10,

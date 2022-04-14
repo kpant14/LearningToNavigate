@@ -51,7 +51,7 @@ def visualize(fig, ax, img, grid, pos, gt_pos, dump_dir, rank, ep_no, t,
     dx = np.cos(np.deg2rad(o))
     dy = -np.sin(np.deg2rad(o))
     ax[1].arrow(x - 1 * dx, y - 1 * dy, dx * agent_size, dy * (agent_size * 1.25),
-                head_width=agent_size, head_length=agent_size * 1.25,
+                head_width=agent_size*0.5, head_length=agent_size*0.5,
                 length_includes_head=True, fc=fc, ec=fc, alpha=0.9)
 
     # Draw predicted agent pose
@@ -62,8 +62,8 @@ def visualize(fig, ax, img, grid, pos, gt_pos, dump_dir, rank, ep_no, t,
     fc = 'Red'
     dx = np.cos(np.deg2rad(o))
     dy = -np.sin(np.deg2rad(o))
-    ax[1].arrow(x - 1 * dx, y - 1 * dy, dx * agent_size, dy * agent_size * 1.25,
-                head_width=agent_size, head_length=agent_size * 1.25,
+    ax[1].arrow(x - 1 * dx, y - 1 * dy, dx * agent_size, dy * agent_size * 0.5,
+                head_width=agent_size*0.5, head_length=agent_size * 0.5,
                 length_includes_head=True, fc=fc, ec=fc, alpha=0.6)
 
     for _ in range(5):
@@ -96,21 +96,9 @@ def fill_color(colored, mat, color):
     return colored
 
 
-def get_colored_map(mat, collision_map, visited, visited_gt, goal,
+def get_colored_map(mat, collision_map, visited, visited_gt, goal, stg,
                     explored, gt_map, gt_map_explored):
-    # m, n = mat.shape
-    # colored = np.ones((m, n, 3))
-    # #White for explored map
-    # current_palette = [(1,1,1)]
-    # colored = fill_color(colored, explored, current_palette[0])  
-    # #Balck for th obstacle map
-    # current_palette = [(0,0,0)]
-    # colored = fill_color(colored, mat, current_palette[0])      
-    # colored = 1 - colored
-    # colored *= 255
-    # colored = colored.astype(np.uint8)
-    
-    
+   
     m, n = mat.shape
     colored = np.zeros((m, n, 3))
     pal = sns.color_palette("Paired")
@@ -146,6 +134,15 @@ def get_colored_map(mat, collision_map, visited, visited_gt, goal,
         goal_mat, selem) != True
 
     colored = fill_color(colored, goal_mat, current_palette[0])
+
+    selem = skimage.morphology.disk(3)
+    goal_mat = np.zeros((m, n))
+    goal_mat[int(stg[0]), int(stg[1])] = 1
+    goal_mat = 1 - skimage.morphology.binary_dilation(
+        goal_mat, selem) != True
+
+    colored = fill_color(colored, goal_mat, current_palette[2])
+
 
     current_palette = sns.color_palette("Paired")
 
